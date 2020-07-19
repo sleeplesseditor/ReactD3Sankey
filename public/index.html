@@ -14,7 +14,9 @@
       manifest.json provides metadata used when your web app is installed on a
       user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
     -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.7.4/css/bulma.min.css">
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <link  href="%PUBLIC_URL%/styles/sk.d3.css" rel="stylesheet" type="text/css" />
     <!--
       Notice the use of %PUBLIC_URL% in the tags above.
       It will be replaced with the URL of the `public` folder during the build.
@@ -24,10 +26,15 @@
       work correctly both with client-side routing and a non-root public URL.
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
-    <title>React App</title>
+    <title>React and D3 Multi-stream Sankey</title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div class="title__container">
+      <h1 class="heading-title">Multi-stream Sankey Diagram</h1>
+    </div>
+    <div class="Visualisation tab-pane content-supplier" id="visualisation-container" data-json="">
+    </div>
     <div id="root"></div>
     <!--
       This HTML file is a template.
@@ -40,4 +47,15 @@
       To create a production bundle, use `npm run build` or `yarn build`.
     -->
   </body>
+  <script src="https://unpkg.com/d3@4.10.2/build/d3.min.js"></script>
+  <script src="%PUBLIC_URL%/scripts/d3.sankey.js"></script>
+  <script src="%PUBLIC_URL%/scripts/d3.sk.js"></script>
+  <script type="text/javascript">
+    var cacheBust = ['%PUBLIC_URL%/scripts/visualisation.js'];
+    for (let i=0; i < cacheBust.length; i++){
+      var el = document.createElement('script');
+      el.src = cacheBust[i]+"?v=" + Math.random();
+      document.getElementsByTagName('body')[0].appendChild(el);
+    }
+  </script>
 </html>
