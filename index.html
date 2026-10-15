@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.7.4/css/bulma.min.css">
+        <link  href="/styles/sk.d3.css" rel="stylesheet" type="text/css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>React and D3 Multi-stream Sankey</title>
+  </head>
+  <body>
+        <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div class="title__container">
+      <h1 class="heading-title">Multi-stream Sankey Diagram</h1>
+    </div>
+    <div class="Visualisation tab-pane content-supplier" id="visualisation-container" data-json="">
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script src="https://unpkg.com/d3@4.10.2/build/d3.min.js"></script>
+  <script src="/scripts/d3.sankey.js"></script>
+  <script src="/scripts/d3.sk.js"></script>
+  <script type="text/javascript">
+    // var cacheBust = ['/scripts/visualisation.js'];
+    // for (let i=0; i < cacheBust.length; i++){
+    //   var el = document.createElement('script');
+    //   el.src = cacheBust[i]+"?v=" + Math.random();
+    //   document.getElementsByTagName('body')[0].appendChild(el);
+    // }
+      fetch('/data/energy.json')
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Could not load graph data: ${response.status}`);
+      }
+      return response.json();
+    })
+    .then((graphData) => {
+      document
+        .querySelector('#visualisation-container')
+        .setAttribute('data-init', JSON.stringify(graphData));
+
+      const script = document.createElement('script');
+      script.src = `/scripts/visualisation.js?v=${Math.random()}`;
+      document.body.appendChild(script);
+    })
+    .catch((error) => console.error('Failed to initialize visualization:', error));
+  </script>
+  </body>
+</html>
