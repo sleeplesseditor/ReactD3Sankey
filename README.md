@@ -4,6 +4,7 @@
 - [Description](#description)
 - [Example Screenshots](#example-screenshots)
 - [Running the App Locally](#running-the-app-locally)
+- [Potential Future Improvements](#potential-future-improvements)
 
 ## Description
 A research project focused on creating a customised Sankey diagram to mimic stream flow and capacity allocation in a network, using React and D3, and built with [Kadir Doğan](https://github.com/kdrdgn).
@@ -22,3 +23,8 @@ Configs View
 - CD into the repo folder
 - Run `npm install`
 - Run `npm run dev`
+
+## Potential Future Improvements
+- Revise D3 setup to use as dependency wrapper
+- Revise form setup to use [React Hook Form](https://react-hook-form.com/)
+    - Tidy up form validation to match. Use [Yup form validation](https://github.com/jquense/yup) with React Hook Form
