@@ -1,47 +1,167 @@
 import * as React from 'react';
 import './App.css';
 import { counterParties, defaultTerminalValues, streams } from '@helpers/sankeyHelpers';
+import Config from '@components/Config';
+import TerminalMenu from '@components/TerminalMenu';
 
-const emptyForm = {
+type TradeForm = {
+  month: string;
+  volume: string;
+  stream: string;
+  counterparty: string;
+};
+
+const emptyForm: TradeForm = {
   month: '',
   volume: '',
   stream: '',
   counterparty: ''
 }
 
+type OperatorStream = (typeof streams)[number] & {
+  allocations: Record<string, number>;
+  nomination: number;
+};
+
+interface TradeProps {
+  counterparty: {
+    id: string,
+    name: string
+  },
+  id: number,
+  month: string,
+  stream: {
+    id: string,
+    name: string,
+    source: number,
+    target: number
+  }
+  volume: string,
+}
+
+
 const App = () => {
   const [tab, setTab] = React.useState<string>('shipper');
   const [ctab, setCtab] = React.useState<string>('terminal');
   const [shipper, setShipper] = React.useState<string>('CPA');
   const [isEditing, setIsEditing] = React.useState<boolean>(false);
-  const [editTrade, setEditTrade] = React.useState();
-  const [trades, setTrades] = React.useState([]);
-  const [operatorStreams, setOperatorStreams] = React.useState({});
+  const [editTrade, setEditTrade] = React.useState<TradeProps | null>(null);
+  const [trades, setTrades] = React.useState<TradeProps[]>([]);
+  const [operatorStreams, setOperatorStreams] = React.useState<Record<string, OperatorStream>>({});
+  const [allocationErrors, setAllocationErrors] = React.useState<Record<string, string>>({});
   const [configs, setConfigs] = React.useState({ toggleFlow: false });
   const [terminals, setTerminals] = React.useState(defaultTerminalValues);
-  const [form, setForm] = React.useState(emptyForm);
+  const [form, setForm] = React.useState<TradeForm>(emptyForm);
+  const [tradeFormError, setTradeFormError] = React.useState('');
 
   const graphContainer = document.getElementById('visualisation-container');
 
-  const updateGraph = (reload?: boolean, terminalValues = terminals) => {
+  const getCapacityValue = (streamSource: number, terminalValues: typeof terminals = terminals) => {
+    const totalCapacity = Number(terminalValues[streamSource]?.totalCapacity ?? 0);
+    const commonSource = streams.filter(stream => stream.source === streamSource).length;
+    return commonSource > 0 ? totalCapacity / commonSource : 0;
+  };
+
+  const propagateTerminalCapacity = (terminalValues: typeof terminals, changedTerminalId: number) => {
+    const outgoingCounts = new Map<number, number>();
+    const incomingCounts = new Map<number, number>();
+    const downstreamNodes = new Map<number, number[]>();
+
+    terminals.forEach(terminal => {
+      incomingCounts.set(terminal.id, 0);
+      downstreamNodes.set(terminal.id, []);
+    });
+
+    streams.forEach(stream => {
+      outgoingCounts.set(stream.source, (outgoingCounts.get(stream.source) ?? 0) + 1);
+      incomingCounts.set(stream.target, (incomingCounts.get(stream.target) ?? 0) + 1);
+      downstreamNodes.get(stream.source)?.push(stream.target);
+    });
+
+    const nodesReady = terminals
+      .filter(terminal => incomingCounts.get(terminal.id) === 0)
+      .map(terminal => terminal.id);
+    const topologicalOrder: number[] = [];
+
+    while (nodesReady.length > 0) {
+      const nodeId = nodesReady.shift()!;
+      topologicalOrder.push(nodeId);
+
+      downstreamNodes.get(nodeId)?.forEach(targetId => {
+        const remainingInputs = (incomingCounts.get(targetId) ?? 0) - 1;
+        incomingCounts.set(targetId, remainingInputs);
+        if (remainingInputs === 0) nodesReady.push(targetId);
+      });
+    }
+
+    if (topologicalOrder.length !== terminals.length) {
+      throw new Error('Cannot propagate terminal capacity through a cyclic stream graph.');
+    }
+
+    const terminalIndexes = new Map(terminalValues.map((terminal, index) => [terminal.id, index]));
+    const affectedNodes = new Set<number>([changedTerminalId]);
+
+    topologicalOrder.forEach(nodeId => {
+      if (!affectedNodes.has(nodeId)) return;
+
+      const nodeIndex = terminalIndexes.get(nodeId);
+      if (nodeIndex === undefined) return;
+
+      downstreamNodes.get(nodeId)?.forEach(targetId => affectedNodes.add(targetId));
+
+      if (nodeId === changedTerminalId || !streams.some(stream => stream.target === nodeId)) return;
+
+      const incomingCapacity = streams
+        .filter(stream => stream.target === nodeId)
+        .reduce((total, stream) => {
+          const sourceIndex = terminalIndexes.get(stream.source);
+          const sourceCapacity = sourceIndex === undefined
+            ? 0
+            : Number(terminalValues[sourceIndex].totalCapacity);
+          const sourceOutgoingCount = outgoingCounts.get(stream.source) ?? 0;
+          return total + (sourceOutgoingCount > 0 ? sourceCapacity / sourceOutgoingCount : 0);
+        }, 0);
+
+      terminalValues[nodeIndex] = {
+        ...terminalValues[nodeIndex],
+        totalCapacity: incomingCapacity,
+      };
+    });
+
+    return terminalValues;
+  };
+
+  const getRemainingAllocationCapacity = (streamId: string, counterPartyId: string) => {
+    const stream = streams.find(item => item.id === streamId);
+    if (!stream) return 0;
+
+    const currentAllocations = operatorStreams[streamId]?.allocations ?? {};
+    const allocatedToOthers = Object.entries(currentAllocations).reduce(
+      (total, [id, value]) => id === counterPartyId ? total : total + Number(value ?? 0),
+      0
+    );
+
+    return Math.max(0, getCapacityValue(stream.source) - allocatedToOthers);
+  };
+
+  const updateGraph = (
+    reload?: boolean,
+    terminalValues: typeof terminals = terminals,
+    allocationValues: typeof operatorStreams = operatorStreams,
+    tradeValues: TradeProps[] = trades
+  ) => {
     const nodes = terminalValues;
 
-    const getCapacityValue = (streamSource) => {
-      const { totalCapacity } = nodes[streamSource];
-      const commonSource = streams.filter(p => p.source === streamSource).length;
-      return totalCapacity / commonSource;
-    };
+    const getAllocationValue = (streamId: string) => {
+      const allocations = allocationValues[streamId]?.allocations;
+      if (!allocations) return 0;
 
-    const getAllocationValue = (streamId) => {
-      console.log('STREAM ID', operatorStreams, streamId)
-      let allocationValue = 0;
       if (tab === 'shipper') {
-        allocationValue = operatorStreams[streamId]?.allocations[shipper];
-      } else if (tab === 'operator') {
-        const opa = operatorStreams[streamId]?.allocations;
-        allocationValue = Object.keys(opa).map(cp => opa[cp]).reduce((total, cp) => total + cp);
+        return Number(allocations[shipper] ?? 0);
       }
-      return allocationValue;
+
+      return Object.values(allocations)
+        .reduce((total, value) => total + Number(value ?? 0), 0);
     };
 
     const nominations = streams.map((stream) => {
@@ -50,15 +170,17 @@ const App = () => {
         ...stream,
         value: 0,
         color: '#0074D9',
+        overload: 0
       };
-      trades.forEach((trade) => {
+
+      tradeValues.forEach((trade) => {
         if (trade.stream && trade.stream.id === stream.id) {
           nomination.value += parseInt(trade.volume);
         }
       });
 
       const allocationValue = getAllocationValue(stream.id);
-      const capacity = getCapacityValue(stream.source);
+      const capacity = getCapacityValue(stream.source, terminalValues);
 
       if (nomination.value > allocationValue) {
         nomination.color = '#FF4136';
@@ -72,8 +194,8 @@ const App = () => {
     const allocations = streams.map((stream) => {
       let allocationValue = getAllocationValue(stream.id);
       const nomination = nominations.find(nom => nom.id === stream.id);
-      const capacity = getCapacityValue(stream.source);
-      console.log(stream.name, 'alloc', allocationValue, 'nom', nomination.value, 'capacity', capacity);
+      const capacity = getCapacityValue(stream.source, terminalValues);
+      // console.log(stream.name, 'alloc', allocationValue, 'nom', nomination.value, 'capacity', capacity);
 
       if (allocationValue >= nomination.value) {
         allocationValue -= nomination.value;
@@ -105,14 +227,14 @@ const App = () => {
 
       const allocationValue = getAllocationValue(stream.id);
       const nomination = nominations.find(nom => nom.id === stream.id);
-      const capacity = getCapacityValue(stream.source);
+      const capacity = getCapacityValue(stream.source, terminalValues);
 
       if (capacity - (nomination.value + allocationValue) < 0) {
         spareValue = 0;
       } else {
         spareValue = capacity - allocationValue;
       }
-      console.log('SPARE', stream.name, 'alloc', allocationValue, 'nom', nomination.value, 'spare', spareValue, 'capacity', capacity);
+      // console.log('SPARE', stream.name, 'alloc', allocationValue, 'nom', nomination.value, 'spare', spareValue, 'capacity', capacity);
 
       return {
         ...stream,
@@ -127,79 +249,108 @@ const App = () => {
     const graphData = {
       nodes,
       links,
-    };
-    console.log('graphData', graphData);
-    graphContainer.setAttribute('data-init', JSON.stringify(graphData));
+    };    
+    graphContainer?.setAttribute('data-init', JSON.stringify(graphData));
+
     if (reload) {
-      graphContainer.setAttribute('data-reload', new Date().getTime());
+      graphContainer?.setAttribute('data-reload', `${new Date().getTime()}`);
     }
   }
 
-  const updateOperatorStreams = () => {
-    const operatorStreamsForUpdate = operatorStreams;
+  const updateOperatorStreams = (tradeValues: TradeProps[] = trades) => {
+    const operatorStreamsForUpdate = { ...operatorStreams };
     streams.forEach((stream) => {
-      let nomination = 0;
-      trades.forEach((trade) => {
+      const nomination = tradeValues.reduce((total, trade) => {
         if (trade.stream && trade.stream.id === stream.id) {
-          nomination += parseInt(trade.volume);
+          return total + Number(trade.volume);
         }
-      });
-      operatorStreamsForUpdate[stream.id].nomination = nomination;
+        return total;
+      }, 0);
+
+      if (operatorStreamsForUpdate[stream.id]) {
+        operatorStreamsForUpdate[stream.id] = {
+          ...operatorStreamsForUpdate[stream.id],
+          nomination,
+        };
+      }
     });
-    setOperatorStreams(operatorStreamsForUpdate)
+    setOperatorStreams(operatorStreamsForUpdate);
+    return operatorStreamsForUpdate;
   }
 
   const getStreamById = (id) => streams.find(stream => stream.id === id);
 
   const getCounterPartyById = (id) => counterParties.find(cp => cp.id === id);
 
-  const editTradeAction = async (trade) => {
-    const formforUpdate = { ...trade };
-    formforUpdate.stream = trade.stream.id;
-    formforUpdate.counterparty = trade.counterparty.id;
-    console.log('Trade Edited', formforUpdate);
+  const editTradeAction = async (trade: TradeProps) => {
+    console.log('TR', trade)
+    const formforUpdate = { 
+      ...trade,
+      stream: trade.stream.id,
+      counterparty: trade.counterparty.id
+    };
+
+    console.log('FORM', formforUpdate)
+
     await setForm(formforUpdate);
     await setIsEditing(true);
     await setEditTrade(trade);
   }
 
-  const deleteTrade = async (tradeId, index) => {
+  const deleteTrade = async (tradeId: number) => {
     console.log('Trade Deleted', tradeId);
-    const tradesForDeletion = trades;
-    const deletedTrades = tradesForDeletion.filter((trade, index) => trade.id !== tradeId);
+    const deletedTrades = trades.filter(trade => trade.id !== tradeId);
     console.log('deleted trades', deletedTrades);
 
-    await setTrades(deletedTrades.slice(0));
+    setTrades(deletedTrades);
     await setIsEditing(false);
 
-    updateOperatorStreams();
-    updateGraph();
+    const nextOperatorStreams = updateOperatorStreams(deletedTrades);
+    updateGraph(false, terminals, nextOperatorStreams, deletedTrades);
   }
 
-  const handleTrade = async (tradeId?) => {
-    console.log('Trade Submitted');
-
-    const newTrade = { ...form };
-    newTrade.stream = getStreamById(form.stream);
-    newTrade.counterparty = getCounterPartyById(form.counterparty);
-    // TODO validation
-    
-    const tradesforEditing = trades;
-    if (isEditing) {
-      const editingTrade = editTrade;
-      const editTradeIndex = tradesforEditing.findIndex(trade => trade.id === editingTrade.id);
-      trades[editTradeIndex] = newTrade;
-    } else {
-      newTrade.id = new Date().getTime();
-      tradesforEditing.push(newTrade);
+  const handleTrade = async () => {
+    const stream = getStreamById(form.stream);
+    const counterparty = getCounterPartyById(form.counterparty);
+    if (!form.month || !form.volume || !stream || !counterparty) {
+      setTradeFormError('Enter a month, volume, stream, and counterparty before saving.');
+      return;
     }
 
-    await setTrades(tradesforEditing);
+    if (isEditing && !editTrade) {
+      setTradeFormError('Select a trade to edit before saving.');
+      return;
+    }
+
+    setTradeFormError('');
+    const newTrade = {
+      ...form,
+      stream,
+      counterparty,
+    };
+
+    let nextTrades: TradeProps[];
+
+    if (isEditing && editTrade) {
+      nextTrades = trades.map(trade => trade.id === editTrade.id
+        ? { ...newTrade, id: editTrade.id }
+        : trade);
+    } else {
+      const updateTrade = {
+        ...newTrade,
+        id: new Date().getTime()
+      }
+
+      nextTrades = [...trades, updateTrade];
+    }
+
+    setTrades(nextTrades);
     await setIsEditing(false);
+    setEditTrade(null);
     await setForm(emptyForm);
 
-    updateOperatorStreams();
-    updateGraph();
+    const nextOperatorStreams = updateOperatorStreams(nextTrades);
+    updateGraph(false, terminals, nextOperatorStreams, nextTrades);
   }
 
   const handleTradeFormChange = async (e: any) => {
@@ -213,33 +364,52 @@ const App = () => {
   }
 
   const handleTerminalCapacityChange = (e, terminalId: number) => {
-    console.log('TARG', terminalId, terminals, e.target.value)
     e.preventDefault();
     const terminalsForChange = [...terminals];
-    terminalsForChange[terminalId] = {
-      ...terminals[terminalId],
+    const terminalIndex = terminalsForChange.findIndex(terminal => terminal.id === terminalId);
+    if (terminalIndex === -1) return;
+
+    terminalsForChange[terminalIndex] = {
+      ...terminalsForChange[terminalIndex],
       totalCapacity: Number(e.target.value)
     };
-    
-    console.log('TERM FOR CHANGE', terminalsForChange)
-    setTerminals(terminalsForChange);
-    updateGraph(true, terminalsForChange);
+
+    const propagatedTerminals = propagateTerminalCapacity(terminalsForChange, terminalId);
+    setTerminals(propagatedTerminals);
+    updateGraph(true, propagatedTerminals);
   }
 
-  const handleOperatorFormChange = async (e: any, streamId: string, counterPartyId: string) => {
-    e.preventDefault();
-    const operatorStreamsForUpdate = {
+  const handleOperatorFormChange = (e: React.ChangeEvent<HTMLInputElement>, streamId: string, counterPartyId: string) => {
+    const value = e.currentTarget.value === '' ? 0 : Number(e.currentTarget.value);
+    const allocationKey = `${streamId}-${counterPartyId}`;
+    const remainingCapacity = getRemainingAllocationCapacity(streamId, counterPartyId);
+
+    if (!Number.isFinite(value) || value < 0 || value > remainingCapacity) {
+      setAllocationErrors(prevErrors => ({
+        ...prevErrors,
+        [allocationKey]: `Enter an allocation between 0 and ${remainingCapacity} units, the remaining capacity on this stream.`,
+      }));
+      return;
+    }
+
+    setAllocationErrors(prevErrors => {
+      const nextErrors = { ...prevErrors };
+      delete nextErrors[allocationKey];
+      return nextErrors;
+    });
+
+    const nextOperatorStreams = {
       ...operatorStreams,
       [streamId]: {
         ...operatorStreams[streamId],
         allocations: {
           ...operatorStreams[streamId].allocations,
-          [counterPartyId]: parseInt(e.target.value)
-        }
-      } 
+          [counterPartyId]: value,
+        },
+      },
     };
-    await setOperatorStreams(operatorStreamsForUpdate);
-    updateGraph();
+    setOperatorStreams(nextOperatorStreams);
+    updateGraph(false, terminals, nextOperatorStreams);
   }
 
   const handleFlowDirection = (e) => {
@@ -249,7 +419,6 @@ const App = () => {
     const canvasFlow = document.querySelector('.sk-canvas');
     canvasFlow && canvasFlow.classList.toggle('canvas-hidden');
   }
-
 
   const handleConfigTabSwitch = (ctabValue: string) => {
     setCtab(ctabValue);
@@ -276,8 +445,8 @@ const App = () => {
         ...prevState,
         [stream.id]: operatorStream
       }))
-
     });
+
     updateGraph();
   }, []);
 
@@ -316,21 +485,17 @@ const App = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {trades && trades.map((trade, index) => (
-                          <tr key={trade.id}>
-
+                        {trades.map((trade) => (
+                          <tr key={trade?.id}>
                             <td>
                               {trade.month}
                             </td>
-
                             <td>
                               {trade.volume}
                             </td>
-
                             <td>
                               {trade.stream && trade.stream.name}
                             </td>
-
                             <td>
                               {trade.counterparty && trade.counterparty.name}
                             </td>
@@ -341,7 +506,8 @@ const App = () => {
                                     className="button is-warning is-small" 
                                     name="edit-button" 
                                     onClick={() => { editTradeAction(trade); }} 
-                                    type="button">
+                                    type="button"
+                                  >
                                       Edit
                                   </button>
                                 </p>
@@ -349,7 +515,7 @@ const App = () => {
                                   <button 
                                     className="button is-danger is-small" 
                                     name="delete-button" 
-                                    onClick={() => { deleteTrade(trade.id, index); }} 
+                                    onClick={() => { deleteTrade(trade.id); }} 
                                     type="button"
                                   >
                                     Delete
@@ -389,9 +555,13 @@ const App = () => {
                               </select>
                             </div>
                           </td>
-                          <td colspan="2">
+                          <td colSpan="2">
                             <div className="select is-fullwidth">
-                              <select name="counterparty" value={form.counterparty} onChange={handleTradeFormChange}>
+                              <select 
+                                name="counterparty"
+                                onChange={handleTradeFormChange} 
+                                value={form.counterparty}
+                              >
                                 <option>Select Counterparty</option>
                                 {counterParties.map(cp => (
                                   <option value={cp.id} key={cp.id}>{cp.name}</option>
@@ -403,6 +573,9 @@ const App = () => {
                         </tr>
                       </tbody>
                     </table>
+                    {tradeFormError && (
+                      <p className="help is-danger" role="alert">{tradeFormError}</p>
+                    )}
                     <button 
                       className={`button ${isEditing ? 'is-warning' : 'is-primary'}`} 
                       name="submit-button" 
@@ -440,18 +613,33 @@ const App = () => {
                               <td>
                                 {operatorStream.nomination}
                               </td>
-                              {counterParties.map(cp => (
-                                <td key={`${operatorStreamId}-${cp.id}`}>
-                                  <input 
-                                    className="input is-fullwidth" 
-                                    name="allocation" 
-                                    onChange={(e) => { handleOperatorFormChange(e, operatorStream.id, cp.id); }} 
-                                    step="100" 
-                                    type="number" 
-                                    value={operatorStream.allocations[cp.id]} 
-                                  />
-                                </td>
-                              ))}
+                              {counterParties.map(cp => {
+                                const allocationKey = `${operatorStreamId}-${cp.id}`;
+                                const error = allocationErrors[allocationKey];
+                                const remainingCapacity = getRemainingAllocationCapacity(operatorStreamId, cp.id);
+                                
+                                return (
+                                  <td key={allocationKey}>
+                                    <input
+                                      aria-describedby={error ? `${allocationKey}-error` : undefined}
+                                      aria-invalid={Boolean(error)}
+                                      className="input is-fullwidth"
+                                      max={remainingCapacity}
+                                      min="0"
+                                      name="allocation"
+                                      onChange={(e) => { handleOperatorFormChange(e, operatorStream.id, cp.id); }}
+                                      step="100"
+                                      type="number"
+                                      value={operatorStream.allocations[cp.id]}
+                                    />
+                                    {error && (
+                                      <p id={`${allocationKey}-error`} className="help is-danger" role="alert">
+                                        {error}
+                                      </p>
+                                    )}
+                                  </td>
+                                );
+                              })}
                             </tr>
                           );
                         })}
@@ -479,51 +667,17 @@ const App = () => {
                   </ul>
                 </div>
                 {ctab === 'terminal' && (
-                  <div>
-                    <table className="table is-fullwidth">
-                      <tbody>
-                        {terminals.map(terminal => (
-                          <tr key={terminal.name}>
-                            <td>
-                              <span 
-                                className="terminal-color" 
-                                style={{ backgroundColor: terminal.color }} 
-                              /> 
-                              <span>{terminal.name}</span>
-                            </td>
-                            <td>
-                              <input 
-                                className="input has-text-right" 
-                                name="terminal-name" 
-                                onChange={(e) => handleTerminalCapacityChange(e, terminal.id) }
-                                step="100"
-                                type="number" 
-                                value={terminal.totalCapacity}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <TerminalMenu 
+                    handleTerminalCapacityChange={handleTerminalCapacityChange}
+                    terminals={terminals}
+                  />
                 )}
                 {ctab === 'config' && (
-                  <div>
-                    <h1 className="box__heading">Configure Settings</h1>
-                    <div className="field is-grouped">
-                      <p className="control">
-                        <button 
-                          className="button is-info" 
-                          onClick={handleFlowDirection}
-                        >
-                          {configs.toggleFlow ? 'Hide' : 'Show'} Flow
-                        </button>
-                      </p>
-                      <p className="control">
-                        <button className="button is-info" onClick={() => { updateGraph(true); }}>Reload Graph</button>
-                      </p>
-                    </div>
-                  </div>
+                  <Config 
+                    configs={configs}
+                    handleFlowDirection={handleFlowDirection}
+                    updateGraph={updateGraph}
+                  />
                 )}
               </div>
             </div>
