@@ -10,6 +10,13 @@ A research project focused on creating a customised Sankey diagram to mimic stre
 
 ## Example Screenshots
 <img width="1905" height="831" alt="Screenshot 2026-10-15 at 18 41 00" src="https://github.com/user-attachments/assets/c3a3c55d-9bcb-4bfb-8c78-9dc54d7756c8" />
+Trade History View with Terminals 
+
+<img width="1899" height="822" alt="Screenshot 2026-10-15 at 18 47 24" src="https://github.com/user-attachments/assets/fb98577f-feea-4b01-a31d-efe303ceb62f" />
+Operator View
+
+<img width="1906" height="833" alt="Screenshot 2026-10-15 at 18 47 36" src="https://github.com/user-attachments/assets/d10ec8d2-7ea8-4dc2-9cb2-9da07f781f8f" />
+Configs View
 
 ## Running the App Locally
 - CD into the repo folder
