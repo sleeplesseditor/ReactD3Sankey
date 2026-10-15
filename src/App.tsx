@@ -202,13 +202,14 @@ const App = () => {
     updateGraph();
   }
 
-  const handleTradeFormChange = (e: any) => {
+  const handleTradeFormChange = async (e: any) => {
     e.preventDefault();
-    const target = e.target;
-    const formState = form;
-    formState[target.name] = target.value;
+    const formState = {
+      ...form,
+      [e.target.name]: e.target.value
+    }
 
-    setForm(formState);
+    await setForm(formState);
   }
 
   const handleTerminalCapacityChange = (e, terminalId: number) => {
