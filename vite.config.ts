@@ -5,6 +5,10 @@ import path from 'path';
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    outDir: 'dist',
+  },
+  base: "/React-D3-Sankey/",
   resolve: {
     alias: {
       "@components": path.resolve(__dirname, "./src/components"),
