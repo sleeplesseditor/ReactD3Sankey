@@ -8,7 +8,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
   },
-  base: "/reactd3sankey/",
+  base: "/ReactD3Sankey/",
   resolve: {
     alias: {
       "@components": path.resolve(__dirname, "./src/components"),

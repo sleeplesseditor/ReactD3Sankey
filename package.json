@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://sleeplesseditor.github.io/reactd3sankey/",
+  "homepage": "https://sleeplesseditor.github.io/ReactD3Sankey/",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
