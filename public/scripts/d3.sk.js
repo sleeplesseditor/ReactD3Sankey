@@ -784,7 +784,7 @@ sk.createSankey = function(containerId, configSankey, dataSankey) {
 
     //https://bl.ocks.org/syntagmatic/77c7f7e8802e8824eed473dd065c450b
     var _updateLinksValues = function(dataUpdated) {
-        console.log('_updateLinksValues', dataUpdated);
+        // console.log('_updateLinksValues', dataUpdated);
         _stopTooltips();
         sankey(dataUpdated);
         sankey.update(dataUpdated);

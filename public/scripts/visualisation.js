@@ -27,8 +27,26 @@ const configSankey = {
 };
 
 const targetNode = document.querySelector(visualisationContainer);
-let graphData = JSON.parse(targetNode.getAttribute('data-init'));
-let objSankey = sk.createSankey(visualisationContainer, configSankey, graphData);
+let objSankey;
+
+const initializeSankey = () => {
+  if (objSankey) return;
+
+  const bounds = targetNode.getBoundingClientRect();
+  const minimumHeight = configSankey.margin.top + configSankey.margin.bottom;
+  if (bounds.width <= configSankey.margin.left + configSankey.margin.right
+    || bounds.height <= minimumHeight) {
+    return;
+  }
+
+  const graphData = JSON.parse(targetNode.getAttribute('data-init'));
+  objSankey = sk.createSankey(visualisationContainer, configSankey, graphData);
+  resizeObserver.disconnect();
+};
+
+const resizeObserver = new ResizeObserver(initializeSankey);
+resizeObserver.observe(targetNode);
+initializeSankey();
 
 // Options for the observer (which mutations to observe)
 const config = { attributes: true, childList: false, subtree: false };
@@ -39,13 +57,20 @@ const callback = function (mutationsList) {
     if (mutation.type === 'attributes') {
       switch (mutation.attributeName) {
         case 'data-init':
-          graphData = JSON.parse(targetNode.getAttribute(mutation.attributeName));
-          console.log('Create graph', graphData);
-          objSankey.updateData(graphData);
+          if (objSankey) {
+            const graphData = JSON.parse(targetNode.getAttribute(mutation.attributeName));
+            objSankey.updateData(graphData);
+          } else {
+            initializeSankey();
+          }
           break;
         case 'data-reload':
-          graphData = JSON.parse(targetNode.getAttribute('data-init'));
-          objSankey = sk.createSankey(visualisationContainer, configSankey, graphData);
+          if (objSankey) {
+            const graphData = JSON.parse(targetNode.getAttribute('data-init'));
+            objSankey = sk.createSankey(visualisationContainer, configSankey, graphData);
+          } else {
+            initializeSankey();
+          }
           break;
         default:
       }

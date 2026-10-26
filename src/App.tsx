@@ -3,6 +3,8 @@ import './App.css';
 import { counterParties, defaultTerminalValues, streams } from '@helpers/sankeyHelpers';
 import Config from '@components/Config';
 import TerminalMenu from '@components/TerminalMenu';
+import TradeForm from '@components/TradeForm';
+import StreamForm from '@components/StreamForm';
 
 type TradeForm = {
   month: string;
@@ -39,20 +41,22 @@ interface TradeProps {
   volume: string,
 }
 
+interface IFormInput {
+    counterparty: string;
+    month: string;
+    stream: string;
+    volume: string;
+}
 
 const App = () => {
   const [tab, setTab] = React.useState<string>('shipper');
   const [ctab, setCtab] = React.useState<string>('terminal');
-  const [shipper, setShipper] = React.useState<string>('CPA');
+  const [shipper, _] = React.useState<string>('CPA');
   const [isEditing, setIsEditing] = React.useState<boolean>(false);
   const [editTrade, setEditTrade] = React.useState<TradeProps | null>(null);
   const [trades, setTrades] = React.useState<TradeProps[]>([]);
   const [operatorStreams, setOperatorStreams] = React.useState<Record<string, OperatorStream>>({});
-  const [allocationErrors, setAllocationErrors] = React.useState<Record<string, string>>({});
-  const [configs, setConfigs] = React.useState({ toggleFlow: false });
   const [terminals, setTerminals] = React.useState(defaultTerminalValues);
-  const [form, setForm] = React.useState<TradeForm>(emptyForm);
-  const [tradeFormError, setTradeFormError] = React.useState('');
 
   const graphContainer = document.getElementById('visualisation-container');
 
@@ -195,7 +199,6 @@ const App = () => {
       let allocationValue = getAllocationValue(stream.id);
       const nomination = nominations.find(nom => nom.id === stream.id);
       const capacity = getCapacityValue(stream.source, terminalValues);
-      // console.log(stream.name, 'alloc', allocationValue, 'nom', nomination.value, 'capacity', capacity);
 
       if (allocationValue >= nomination.value) {
         allocationValue -= nomination.value;
@@ -278,21 +281,11 @@ const App = () => {
     return operatorStreamsForUpdate;
   }
 
-  const getStreamById = (id) => streams.find(stream => stream.id === id);
+  const getStreamById = (id: any) => streams.find(stream => stream.id === id);
 
-  const getCounterPartyById = (id) => counterParties.find(cp => cp.id === id);
+  const getCounterPartyById = (id: any) => counterParties.find(cp => cp.id === id);
 
   const editTradeAction = async (trade: TradeProps) => {
-    console.log('TR', trade)
-    const formforUpdate = { 
-      ...trade,
-      stream: trade.stream.id,
-      counterparty: trade.counterparty.id
-    };
-
-    console.log('FORM', formforUpdate)
-
-    await setForm(formforUpdate);
     await setIsEditing(true);
     await setEditTrade(trade);
   }
@@ -309,22 +302,12 @@ const App = () => {
     updateGraph(false, terminals, nextOperatorStreams, deletedTrades);
   }
 
-  const handleTrade = async () => {
-    const stream = getStreamById(form.stream);
-    const counterparty = getCounterPartyById(form.counterparty);
-    if (!form.month || !form.volume || !stream || !counterparty) {
-      setTradeFormError('Enter a month, volume, stream, and counterparty before saving.');
-      return;
-    }
+  const handleTrade = async (e: IFormInput) => {
+    const stream = getStreamById(e.stream);
+    const counterparty = getCounterPartyById(e.counterparty);
 
-    if (isEditing && !editTrade) {
-      setTradeFormError('Select a trade to edit before saving.');
-      return;
-    }
-
-    setTradeFormError('');
     const newTrade = {
-      ...form,
+      ...e,
       stream,
       counterparty,
     };
@@ -347,20 +330,9 @@ const App = () => {
     setTrades(nextTrades);
     await setIsEditing(false);
     setEditTrade(null);
-    await setForm(emptyForm);
 
     const nextOperatorStreams = updateOperatorStreams(nextTrades);
     updateGraph(false, terminals, nextOperatorStreams, nextTrades);
-  }
-
-  const handleTradeFormChange = async (e: any) => {
-    e.preventDefault();
-    const formState = {
-      ...form,
-      [e.target.name]: e.target.value
-    }
-
-    await setForm(formState);
   }
 
   const handleTerminalCapacityChange = (e, terminalId: number) => {
@@ -381,23 +353,7 @@ const App = () => {
 
   const handleOperatorFormChange = (e: React.ChangeEvent<HTMLInputElement>, streamId: string, counterPartyId: string) => {
     const value = e.currentTarget.value === '' ? 0 : Number(e.currentTarget.value);
-    const allocationKey = `${streamId}-${counterPartyId}`;
-    const remainingCapacity = getRemainingAllocationCapacity(streamId, counterPartyId);
-
-    if (!Number.isFinite(value) || value < 0 || value > remainingCapacity) {
-      setAllocationErrors(prevErrors => ({
-        ...prevErrors,
-        [allocationKey]: `Enter an allocation between 0 and ${remainingCapacity} units, the remaining capacity on this stream.`,
-      }));
-      return;
-    }
-
-    setAllocationErrors(prevErrors => {
-      const nextErrors = { ...prevErrors };
-      delete nextErrors[allocationKey];
-      return nextErrors;
-    });
-
+   
     const nextOperatorStreams = {
       ...operatorStreams,
       [streamId]: {
@@ -410,14 +366,6 @@ const App = () => {
     };
     setOperatorStreams(nextOperatorStreams);
     updateGraph(false, terminals, nextOperatorStreams);
-  }
-
-  const handleFlowDirection = (e) => {
-    const configsForUpdate = configs;
-    configsForUpdate.toggleFlow = !configs.toggleFlow;
-    setConfigs(configsForUpdate);
-    const canvasFlow = document.querySelector('.sk-canvas');
-    canvasFlow && canvasFlow.classList.toggle('canvas-hidden');
   }
 
   const handleConfigTabSwitch = (ctabValue: string) => {
@@ -435,7 +383,7 @@ const App = () => {
         ...stream,
         allocations: {},
         nomination: 0,
-      };
+      } as any;
 
       counterParties.forEach((cp) => {
         operatorStream.allocations[cp.id] = 0;
@@ -458,195 +406,32 @@ const App = () => {
               <div className="box">
                 <div className="tabs">
                   <ul>
-                    <li 
-                      className={tab === 'shipper' ? 'is-active' : ''}
-                    >
+                    <li className={tab === 'shipper' ? 'is-active' : ''}>
                       <a onClick={() => { handleTabSwitch('shipper'); }}>Supplier</a>
                     </li>
-                    <li 
-                      className={tab === 'operator' ? 'is-active' : ''}
-                    >
+                    <li className={tab === 'operator' ? 'is-active' : ''}>
                       <a onClick={() => { handleTabSwitch('operator'); }}>Operator</a>
                     </li>
                   </ul>
                 </div>
                 {tab === 'shipper' && (
-                <div className="tab-content-shipper">
-                  <h1 className="box__heading">Trade History</h1>
-                  <form>
-                    <table className="table is-striped is-fullwidth">
-                      <thead>
-                        <tr>
-                          <th>Month</th>
-                          <th>Volume</th>
-                          <th>Stream</th>
-                          <th>Counterparty</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {trades.map((trade) => (
-                          <tr key={trade?.id}>
-                            <td>
-                              {trade.month}
-                            </td>
-                            <td>
-                              {trade.volume}
-                            </td>
-                            <td>
-                              {trade.stream && trade.stream.name}
-                            </td>
-                            <td>
-                              {trade.counterparty && trade.counterparty.name}
-                            </td>
-                            <td>
-                              <div className="field is-grouped">
-                                <p className="control">
-                                  <button 
-                                    className="button is-warning is-small" 
-                                    name="edit-button" 
-                                    onClick={() => { editTradeAction(trade); }} 
-                                    type="button"
-                                  >
-                                      Edit
-                                  </button>
-                                </p>
-                                <p className="control">
-                                  <button 
-                                    className="button is-danger is-small" 
-                                    name="delete-button" 
-                                    onClick={() => { deleteTrade(trade.id); }} 
-                                    type="button"
-                                  >
-                                    Delete
-                                  </button>
-                                </p>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                        <tr>
-                          <td>
-                            <input 
-                              className="input is-fullwidth" 
-                              name="month" 
-                              onChange={handleTradeFormChange} 
-                              type="date" 
-                              value={form.month} 
-                            />
-                          </td>
-                          <td>
-                            <input 
-                              className="input is-fullwidth" 
-                              name="volume" 
-                              onChange={handleTradeFormChange} 
-                              step="100" 
-                              type="number" 
-                              value={form.volume} 
-                            />
-                          </td>
-                          <td>
-                            <div className="select is-fullwidth">
-                              <select name="stream" value={form.stream} onChange={handleTradeFormChange}>
-                                <option>Select Stream</option>
-                                {streams.map(stream => (
-                                  <option value={stream.id} key={stream.id}>{stream.name}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </td>
-                          <td colSpan="2">
-                            <div className="select is-fullwidth">
-                              <select 
-                                name="counterparty"
-                                onChange={handleTradeFormChange} 
-                                value={form.counterparty}
-                              >
-                                <option>Select Counterparty</option>
-                                {counterParties.map(cp => (
-                                  <option value={cp.id} key={cp.id}>{cp.name}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </td>
-                          <td />
-                        </tr>
-                      </tbody>
-                    </table>
-                    {tradeFormError && (
-                      <p className="help is-danger" role="alert">{tradeFormError}</p>
-                    )}
-                    <button 
-                      className={`button ${isEditing ? 'is-warning' : 'is-primary'}`} 
-                      name="submit-button" 
-                      onClick={() => { handleTrade(); }}
-                      type="button" 
-                    >
-                      {isEditing ? 'Edit Trade' : 'Save Trade'}
-                    </button>
-                  </form>
-                </div>
+                  <TradeForm 
+                    counterParties={counterParties}
+                    deleteTrade={deleteTrade}
+                    editTradeAction={editTradeAction}
+                    handleTrade={handleTrade}
+                    isEditing={isEditing}
+                    streams={streams}
+                    trades={trades}
+                  />
                 )}
                 {tab === 'operator' && (
-                <div className="tab-content-operator">
-                  <h1 className="box__heading">Stream Allocation</h1>
-                  <form>
-                    <table className="table is-striped is-fullwidth">
-                      <thead>
-                        <tr>
-                          <th>Stream</th>
-                          <th>Nominations</th>
-                          <th>Allocation (Counterparty A)</th>
-                          <th>Allocation (Counterparty B)</th>
-                          <th>Allocation (Counterparty C)</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Object.keys(operatorStreams).map((operatorStreamId) => {
-                          const operatorStream = operatorStreams[operatorStreamId];
-                          return (
-                            <tr key={operatorStream.id}>
-                              <td>
-                                {operatorStream.name}
-                              </td>
-                              <td>
-                                {operatorStream.nomination}
-                              </td>
-                              {counterParties.map(cp => {
-                                const allocationKey = `${operatorStreamId}-${cp.id}`;
-                                const error = allocationErrors[allocationKey];
-                                const remainingCapacity = getRemainingAllocationCapacity(operatorStreamId, cp.id);
-                                
-                                return (
-                                  <td key={allocationKey}>
-                                    <input
-                                      aria-describedby={error ? `${allocationKey}-error` : undefined}
-                                      aria-invalid={Boolean(error)}
-                                      className="input is-fullwidth"
-                                      max={remainingCapacity}
-                                      min="0"
-                                      name="allocation"
-                                      onChange={(e) => { handleOperatorFormChange(e, operatorStream.id, cp.id); }}
-                                      step="100"
-                                      type="number"
-                                      value={operatorStream.allocations[cp.id]}
-                                    />
-                                    {error && (
-                                      <p id={`${allocationKey}-error`} className="help is-danger" role="alert">
-                                        {error}
-                                      </p>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </form>
-                </div>
+                  <StreamForm 
+                    counterParties={counterParties}
+                    getRemainingAllocationCapacity={getRemainingAllocationCapacity}
+                    handleOperatorFormChange={handleOperatorFormChange}
+                    operatorStreams={operatorStreams}
+                  />
                 )}
               </div>
             </div>
@@ -654,14 +439,10 @@ const App = () => {
               <div className="box">
                 <div className="tabs">
                   <ul>
-                    <li 
-                      className={ctab === 'terminal' ? 'is-active' : ''}
-                    >
+                    <li className={ctab === 'terminal' ? 'is-active' : ''}>
                       <a onClick={() => { handleConfigTabSwitch('terminal'); }}>Terminals</a>
                     </li>
-                    <li 
-                      className={ctab === 'config' ? 'is-active' : ''}
-                    >
+                    <li className={ctab === 'config' ? 'is-active' : ''}>
                       <a onClick={() => { handleConfigTabSwitch('config'); }}>Configs</a>
                     </li>
                   </ul>
@@ -674,8 +455,6 @@ const App = () => {
                 )}
                 {ctab === 'config' && (
                   <Config 
-                    configs={configs}
-                    handleFlowDirection={handleFlowDirection}
                     updateGraph={updateGraph}
                   />
                 )}

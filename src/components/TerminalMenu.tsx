@@ -5,33 +5,32 @@ interface TerminalsProps {
 
 const TerminalMenu = ({ handleTerminalCapacityChange, terminals }: TerminalsProps) => {
     return (
-        <div>
-            <table className="table is-fullwidth">
-                <tbody>
+        <table className="table is-fullwidth">
+            <tbody>
                 {terminals.map(terminal => (
                     <tr key={terminal.name}>
-                    <td>
-                        <span 
-                        className="terminal-color" 
-                        style={{ backgroundColor: terminal.color }} 
-                        /> 
-                        <span>{terminal.name}</span>
-                    </td>
-                    <td>
-                        <input 
-                        className="input has-text-right" 
-                        name="terminal-name" 
-                        onChange={(e) => handleTerminalCapacityChange(e, terminal.id) }
-                        step="100"
-                        type="number" 
-                        value={terminal.totalCapacity}
-                        />
-                    </td>
+                        <td>
+                            <span 
+                                className="terminal-color" 
+                                style={{ backgroundColor: terminal.color }} 
+                            /> 
+                            <span>{terminal.name}</span>
+                        </td>
+                        <td>
+                            <input 
+                                className="input has-text-right" 
+                                min={terminal.name === 'Node 1' ? 100 : 0}
+                                name="terminal-name" 
+                                onChange={(e) => handleTerminalCapacityChange(e, terminal.id) }
+                                step="100"
+                                type="number" 
+                                value={terminal.totalCapacity}
+                            />
+                        </td>
                     </tr>
                 ))}
-                </tbody>
-            </table>
-        </div>
+            </tbody>
+        </table>
     )
 }
 
