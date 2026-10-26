@@ -13,13 +13,6 @@ type TradeForm = {
   counterparty: string;
 };
 
-const emptyForm: TradeForm = {
-  month: '',
-  volume: '',
-  stream: '',
-  counterparty: ''
-}
-
 type OperatorStream = (typeof streams)[number] & {
   allocations: Record<string, number>;
   nomination: number;
@@ -175,7 +168,7 @@ const App = () => {
         value: 0,
         color: '#0074D9',
         overload: 0
-      };
+      } as any;
 
       tradeValues.forEach((trade) => {
         if (trade.stream && trade.stream.id === stream.id) {
@@ -210,6 +203,7 @@ const App = () => {
         id: `${stream.id}-allocation`,
         name: `${stream.name} Allocation`,
         color: '#FFDC00',
+        overload: 0
       };
 
       if (capacity - (nomination.value + allocationValue) < 0) {
@@ -312,7 +306,7 @@ const App = () => {
       counterparty,
     };
 
-    let nextTrades: TradeProps[];
+    let nextTrades: TradeProps[] | any;
 
     if (isEditing && editTrade) {
       nextTrades = trades.map(trade => trade.id === editTrade.id
@@ -322,7 +316,7 @@ const App = () => {
       const updateTrade = {
         ...newTrade,
         id: new Date().getTime()
-      }
+      } as any
 
       nextTrades = [...trades, updateTrade];
     }
@@ -335,7 +329,7 @@ const App = () => {
     updateGraph(false, terminals, nextOperatorStreams, nextTrades);
   }
 
-  const handleTerminalCapacityChange = (e, terminalId: number) => {
+  const handleTerminalCapacityChange = (e: any, terminalId: number) => {
     e.preventDefault();
     const terminalsForChange = [...terminals];
     const terminalIndex = terminalsForChange.findIndex(terminal => terminal.id === terminalId);

@@ -117,7 +117,7 @@ const TradeForm = ({ counterParties, deleteTrade, editTradeAction, handleTrade, 
                               </select>
                             </div>
                           </td>
-                          <td colSpan="2">
+                          <td colSpan={2}>
                             <div className={`select is-fullwidth ${errors.counterparty ? "error-input" : ""}`}>
                                 <select
                                     aria-describedby={errors.counterparty ? "counterparty-error" : undefined}
@@ -137,9 +137,9 @@ const TradeForm = ({ counterParties, deleteTrade, editTradeAction, handleTrade, 
                 </table>
                 {Object.keys(errors).length > 0 ? (
                     <div className="error-container">
-                        {Object.keys(errors).map((error: string) => {
+                        {(Object.keys(errors) as Array<keyof TradeFormValues>).map((error) => {
                             return (
-                                <span key={error}>{errors[error].message}</span>
+                            <span key={error}>{errors[error]?.message}</span>
                             )
                         })}
                     </div>
